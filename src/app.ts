@@ -3,7 +3,10 @@
  * No .listen() here on purpose — tests build the app and use
  * app.inject() directly. server.ts is the only place that binds a port.
  */
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
+import fastifyStatic from "@fastify/static";
 import {
   serializerCompiler,
   validatorCompiler,
@@ -13,6 +16,12 @@ import { ZodError, z } from "zod";
 import { toBase62 } from "./base62.js";
 import { Counter, UrlStore, type UrlRecord } from "./store.js";
 import { HTML } from "./ui.js";
+
+// web/dist is the Vite build output (built React UI). It may not exist in
+// test/dev environments that haven't run `npm run build:web` — in that case
+// we skip registering static serving and fall back to the old inline HTML.
+const WEB_DIST = new URL("../web/dist", import.meta.url).pathname;
+const WEB_DIST_INDEX = join(WEB_DIST, "index.html");
 
 /** Thrown by route handlers when we want the error handler to reply with a specific status. */
 export class HttpError extends Error {
@@ -90,9 +99,29 @@ export function buildApp(opts?: { baseUrl?: string }): FastifyInstance {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
+  // Serve the built React UI's assets if `npm run build:web` has been run.
+  // Kept out of the request path entirely when web/dist doesn't exist, so
+  // API tests keep passing without a build step.
+  if (existsSync(WEB_DIST)) {
+    // Vite's default output nests hashed bundles under dist/assets/ and
+    // index.html references them as /assets/<file>. @fastify/static strips
+    // the prefix before resolving against root, so root must point at the
+    // assets subdirectory itself (root: web/dist alone would look for
+    // web/dist/<file>, missing the assets/ nesting and 404ing).
+    app.register(fastifyStatic, {
+      root: join(WEB_DIST, "assets"),
+      prefix: "/assets/",
+      wildcard: false,
+    });
+  }
+
   // Registered before /:short_code; Fastify treats "/" as a distinct exact
   // route from the "/:short_code" param route, so there's no collision.
   app.get("/", async (_request, reply) => {
+    if (existsSync(WEB_DIST_INDEX)) {
+      reply.type("text/html");
+      return readFileSync(WEB_DIST_INDEX, "utf-8");
+    }
     reply.type("text/html");
     return HTML;
   });
