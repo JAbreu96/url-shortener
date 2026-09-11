@@ -1,6 +1,6 @@
 # URL Shortener
 
-A small URL shortener service built in TypeScript with Fastify and Zod. It turns a long URL into a 7-character code and redirects that code back to the original URL. A single-page UI served at `/` lets a user create short links in a browser.
+A small URL shortener service built in TypeScript with Fastify and Zod. It turns a long URL into a 7-character code and redirects that code back to the original URL. A React + TypeScript UI served at `/` lets a user create short links in a browser.
 
 ## Run it
 
@@ -8,10 +8,21 @@ Requires Node 18+.
 
 ```bash
 npm install
+npm run build:web  # builds the React UI into web/dist
 npm run dev        # http://localhost:3000  (PORT and BASE_URL env vars override)
-npm test           # 24 tests: unit, API (app.inject), UI (jsdom)
-npm run typecheck
+npm test           # 26 tests: unit, API (app.inject), UI (React Testing Library + jsdom)
+npm run typecheck  # server and web
 ```
+
+Fastify serves the built UI: `GET /` returns `web/dist/index.html` and bundles are served under `/assets/`, so neither collides with `GET /:short_code`. If the UI has not been built, `/` falls back to a minimal vanilla HTML form, so the API works without a build step.
+
+For UI development, `npx vite --config web/vite.config.ts` runs the Vite dev server with `/urls` proxied to `:3000`.
+
+## UI
+
+- Form for the long URL, an optional custom alias, and an optional expiry (`datetime-local`, sent as ISO-8601 UTC). Empty optional fields are omitted from the request.
+- On 201 the short URL is shown as a link; on 4xx the server's error message is shown.
+- **Retry:** if the request fails at the network level (`fetch` rejects), the UI retries twice with 200 ms then 400 ms backoff before showing "Network error, please retry". HTTP errors (4xx and 5xx) are never retried: `POST /urls` is not idempotent, so a retry could create a duplicate link.
 
 ## API
 
@@ -96,3 +107,7 @@ Cut deliberately to fit the time box:
 - Past 62^7 IDs, generated codes exceed 7 characters and could collide with custom aliases (returning 500).
 - `expires_at` with a timezone offset (e.g. `+02:00`) is rejected with 400; the UI always sends UTC.
 - UI tests run in jsdom with `fetch` mocked; there is no real-browser end-to-end test.
+- Rebuilding the UI while the server runs requires a server restart (assets are registered at startup).
+- The no-build vanilla fallback UI (`src/ui.ts`) is untested; UI tests cover the React build.
+- UI tests do not assert the retry backoff timing or the no-retry-on-5xx rule.
+- A network-level retry can still duplicate a link if the first request reached the server but the response was lost. An idempotency key on `POST /urls` would close this.
