@@ -5,6 +5,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import {
@@ -20,7 +21,8 @@ import { HTML } from "./ui.js";
 // web/dist is the Vite build output (built React UI). It may not exist in
 // test/dev environments that haven't run `npm run build:web` — in that case
 // we skip registering static serving and fall back to the old inline HTML.
-const WEB_DIST = new URL("../web/dist", import.meta.url).pathname;
+// fileURLToPath (not .pathname) so percent-encoded chars like spaces are decoded.
+const WEB_DIST = fileURLToPath(new URL("../web/dist", import.meta.url));
 const WEB_DIST_INDEX = join(WEB_DIST, "index.html");
 
 /** Thrown by route handlers when we want the error handler to reply with a specific status. */
@@ -199,6 +201,13 @@ export function buildApp(opts?: { baseUrl?: string }): FastifyInstance {
     }
     if (error instanceof HttpError) {
       reply.code(error.statusCode).send({ error: error.message });
+      return;
+    }
+    // Fastify's own client errors (malformed JSON, empty body, wrong
+    // content-type) carry a 4xx statusCode; keep it rather than masking as 500.
+    const withStatus = error as { statusCode?: number };
+    if (withStatus.statusCode !== undefined && withStatus.statusCode >= 400 && withStatus.statusCode < 500) {
+      reply.code(withStatus.statusCode).send({ error: error.message });
       return;
     }
     app.log.error(error);

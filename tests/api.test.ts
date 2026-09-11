@@ -29,6 +29,16 @@ describe("POST /urls", () => {
     expect((await post({ long_url: "not a url" })).statusCode).toBe(400);
   });
 
+  it("malformed JSON body -> 400, not 500", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/urls",
+      headers: { "content-type": "application/json" },
+      payload: "{bad",
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("javascript: long_url -> 400", async () => {
     expect((await post({ long_url: "javascript:alert(1)" })).statusCode).toBe(400);
   });

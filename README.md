@@ -10,7 +10,7 @@ Requires Node 18+.
 npm install
 npm run build:web  # builds the React UI into web/dist
 npm run dev        # http://localhost:3000  (PORT and BASE_URL env vars override)
-npm test           # 25 tests: unit, API (app.inject), UI (React Testing Library + jsdom)
+npm test           # 26 tests: unit, API (app.inject), UI (React Testing Library + jsdom)
 npm run typecheck  # server and web
 ```
 
@@ -107,4 +107,7 @@ Cut deliberately to fit the time box:
 - Past 62^7 IDs, generated codes exceed 7 characters and could collide with custom aliases (returning 500).
 - `expires_at` with a timezone offset (e.g. `+02:00`) is rejected with 400; the UI always sends UTC.
 - UI tests run in jsdom with `fetch` mocked; there is no real-browser end-to-end test.
+- Rebuilding the UI while the server runs requires a server restart (assets are registered at startup).
+- The no-build vanilla fallback UI (`src/ui.ts`) is untested; UI tests cover the React build.
+- UI tests do not assert the retry backoff timing or the no-retry-on-5xx rule.
 - A network-level retry can still duplicate a link if the first request reached the server but the response was lost. An idempotency key on `POST /urls` would close this.
