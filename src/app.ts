@@ -11,7 +11,7 @@ import {
 } from "fastify-type-provider-zod";
 import { ZodError, z } from "zod";
 import { toBase62 } from "./base62.js";
-import { Counter, get, putIfAbsent, type UrlRecord } from "./store.js";
+import { Counter, UrlStore, type UrlRecord } from "./store.js";
 import { HTML } from "./ui.js";
 
 /** Thrown by route handlers when we want the error handler to reply with a specific status. */
@@ -84,6 +84,7 @@ const createUrlBody = z
 export function buildApp(opts?: { baseUrl?: string }): FastifyInstance {
   const baseUrl = opts?.baseUrl ?? "http://localhost:3000";
   const counter = new Counter();
+  const store = new UrlStore();
 
   const app = Fastify().withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
@@ -106,7 +107,7 @@ export function buildApp(opts?: { baseUrl?: string }): FastifyInstance {
 
       let code: string;
       if (custom_alias !== undefined) {
-        if (get(custom_alias) !== undefined) {
+        if (store.get(custom_alias) !== undefined) {
           throw new HttpError(409, `alias "${custom_alias}" is already taken`);
         }
         code = custom_alias;
@@ -121,7 +122,7 @@ export function buildApp(opts?: { baseUrl?: string }): FastifyInstance {
         expires_at: expiresAtDate,
       };
 
-      const inserted = putIfAbsent(record);
+      const inserted = store.putIfAbsent(record);
       if (!inserted) {
         // Either the custom alias raced with another request, or (for generated
         // codes) the counter collided with an existing record — both indicate a
@@ -144,16 +145,14 @@ export function buildApp(opts?: { baseUrl?: string }): FastifyInstance {
   app.get<{ Params: { short_code: string } }>(
     "/:short_code",
     async (request, reply) => {
-      const record = get(request.params.short_code);
+      const record = store.get(request.params.short_code);
       if (record === undefined) {
         throw new HttpError(404, "short_code not found");
       }
       if (record.expires_at !== null && record.expires_at.getTime() <= Date.now()) {
         throw new HttpError(410, "short_code has expired");
       }
-      reply.code(302);
-      reply.header("Location", record.long_url);
-      return {};
+      return reply.redirect(302, record.long_url);
     },
   );
 

@@ -11,23 +11,30 @@ export interface UrlRecord {
   expires_at: Date | null;
 }
 
-const records = new Map<string, UrlRecord>();
-
 /**
- * Inserts a record only if its short_code is not already taken.
- * Returns true if inserted, false if the code was already present
- * (caller must treat false as a real conflict, not retry silently).
+ * Per-instance record store. Must be created fresh per buildApp() call
+ * (not module-level) so separate app instances — e.g. in tests — don't
+ * share short codes with a shared Counter's id sequence.
  */
-export function putIfAbsent(record: UrlRecord): boolean {
-  if (records.has(record.short_code)) {
-    return false;
-  }
-  records.set(record.short_code, record);
-  return true;
-}
+export class UrlStore {
+  private records = new Map<string, UrlRecord>();
 
-export function get(code: string): UrlRecord | undefined {
-  return records.get(code);
+  /**
+   * Inserts a record only if its short_code is not already taken.
+   * Returns true if inserted, false if the code was already present
+   * (caller must treat false as a real conflict, not retry silently).
+   */
+  putIfAbsent(record: UrlRecord): boolean {
+    if (this.records.has(record.short_code)) {
+      return false;
+    }
+    this.records.set(record.short_code, record);
+    return true;
+  }
+
+  get(code: string): UrlRecord | undefined {
+    return this.records.get(code);
+  }
 }
 
 /**
